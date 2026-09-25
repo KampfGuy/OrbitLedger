@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Orbit" />
+  <meta name="theme-color" content="#0b1020" />
+  <meta name="description" content="Launch notes and delta-v scratchpad." />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <title>Orbit Ledger</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --card: #141a2e;
+      --line: #243049;
+      --text: #e8eefc;
+      --muted: #8b97b3;
+      --acc: #5b8cff;
+      --acc2: #3dd6c6;
+      --danger: #ff6b7a;
+      --ok: #6ee7b7;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+      overflow: hidden;
+    }
+    body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+    .app { display: flex; flex-direction: column; height: 100dvh; }
+    header.appbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px 8px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .3px; }
+    .logo {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: radial-gradient(circle at 35% 35%, #7aa2ff, #2a5caa 60%, #12203a);
+      box-shadow: 0 0 0 1px #2c3d62;
+    }
+    .sub { font-size: 11px; color: var(--muted); font-weight: 500; }
+    main { flex: 1; overflow: auto; padding: 8px 16px 88px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 16px; padding: 14px; margin-bottom: 12px;
+    }
+    h2 { font-size: 15px; margin: 0 0 10px; font-weight: 650; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+    input, textarea, select {
+      width: 100%; background: #0d1426; color: var(--text);
+      border: 1px solid var(--line); border-radius: 12px;
+      padding: 11px 12px; font-size: 16px;
+    }
+    textarea { min-height: 88px; resize: vertical; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    button {
+      border: 0; border-radius: 12px; padding: 12px 14px;
+      font-weight: 650; font-size: 15px; color: #071018; background: var(--acc);
+    }
+    button.ghost { background: #1b2440; color: var(--text); border: 1px solid var(--line); }
+    button.wide { width: 100%; margin-top: 10px; }
+    .nav {
+      position: fixed; left: 12px; right: 12px; bottom: calc(10px + env(safe-area-inset-bottom));
+      background: #12182c; border: 1px solid var(--line);
+      border-radius: 18px; display: flex; padding: 6px;
+    }
+    .nav button {
+      flex: 1; background: transparent; color: var(--muted); padding: 10px 6px; font-size: 12px;
+    }
+    .nav button.on { color: var(--text); background: #1c2744; }
+    .note { font-size: 13px; line-height: 1.45; color: #c5cee3; }
+    .chip {
+      display: inline-block; font-size: 11px; padding: 4px 8px; border-radius: 999px;
+      background: #1b2744; color: var(--acc2); margin-right: 6px;
+    }
+    .list item, .log-item {
+      padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px;
+    }
+    .hidden { display: none !important; }
+    .pinwrap { text-align: center; padding: 12px 0; }
+    .pin-display {
+      letter-spacing: 10px; font-size: 28px; font-variant-numeric: tabular-nums;
+      margin: 8px 0 16px; min-height: 36px;
+    }
+    .pad {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 280px; margin: 0 auto;
+    }
+    .pad button { height: 56px; background: #1a2340; color: var(--text); font-size: 20px; }
+    .grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;
+    }
+    .grid.one { grid-template-columns: 1fr; }
+    .grid img, .grid video {
+      width: 100%; border-radius: 12px; background: #0a0f1c; aspect-ratio: 3/4; object-fit: cover;
+    }
+    .status { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .warn { color: #f5c16c; font-size: 12px; line-height: 1.4; }
+    .err { color: var(--danger); font-size: 13px; }
+    .install { font-size: 12px; color: var(--muted); line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="appbar">
+      <div class="brand">
+        <div class="logo"></div>
+        <div>
+          <div id="title">Orbit Ledger</div>
+          <div class="sub" id="subtitle">pad notes</div>
+        </div>
+      </div>
+      <span class="chip" id="modechip">career</span>
+    </header>
+    <main id="main"></main>
+    <nav class="nav" id="nav"></nav>
+  </div>
+
+  <script>
+    const PIN = "91539";
+    const KEY = "ol_v1";
+    const state = {
+      tab: "log",
+      unlocked: sessionStorage.getItem("ol_ok") === "1",
+      pin: "",
+      notes: JSON.parse(localStorage.getItem(KEY + "_notes") || '["Check RCS before circularization.","Keep first stage TWR ~1.4.","Do not forget batteries on the lander."]' ),
+      dv: localStorage.getItem(KEY + "_dv") || "",
+      mass: localStorage.getItem(KEY + "_mass") || "",
+      isp: localStorage.getItem(KEY + "_isp") || "320"
+    };
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    }
+
+    const pages = {
+      log() {
+        return `
+          <div class="card">
+            <h2>Flight log</h2>
+            <p class="note">Scratch notes for the next launch. Nothing leaves this device.</p>
+            <textarea id="newnote" placeholder="Add a note…"></textarea>
+            <button class="wide" onclick="addNote()">Save note</button>
+          </div>
+          <div class="card">
+            <h2>Recent</h2>
+            ${state.notes.map((n,i)=>`<div class="log-item">${esc(n)} <button class="ghost" style="padding:4px 8px;font-size:11px;float:right" onclick="delNote(${i})">remove</button></div>`).join("") || "<div class='note'>Empty.</div>"}
+          </div>`;
+      },
+      calc() {
+        return `
+          <div class="card">
+            <h2>Δv scratchpad</h2>
+            <div class="row">
+              <div><label>Mass (t)</label><input id="mass" inputmode="decimal" value="${esc(state.mass)}" /></div>
+              <div><label>Isp (s)</label><input id="isp" inputmode="decimal" value="${esc(state.isp)}" /></div>
+            </div>
+            <label>Fuel mass (t)</label>
+            <input id="fuel" inputmode="decimal" placeholder="e.g. 8.4" />
+            <button class="wide" onclick="doDv()">Estimate Δv</button>
+            <div class="status" id="dvout">${state.dv ? "Last: " + esc(state.dv) + " m/s" : "Rocket equation, vacuum approx."}</div>
+          </div>
+          <div class="card">
+            <h2>Pad checklist</h2>
+            <div class="note">• SAS / RCS armed<br>• Staging order reviewed<br>• Abort mode set<br>• Comms / batteries green</div>
+          </div>`;
+      },
+      set() {
+        return `
+          <div class="card">
+            <h2>Display</h2>
+            <label>Mode label</label>
+            <select id="modelabel" onchange="document.getElementById('modechip').textContent=this.value">
+              <option>career</option><option>sandbox</option><option>science</option>
+            </select>
+          </div>
+          <div class="card">
+            <h2>Install</h2>
+            <p class="install">Safari → Share → <b>Add to Home Screen</b>. Opens like a normal app. No App Store listing.</p>
+          </div>
+          <div class="card">
+            <h2>About</h2>
+            <p class="note">Orbit Ledger 1.2 — local launch notes. No account.</p>
+            <button class="ghost wide" onclick="openDev()">Developer tools</button>
+          </div>`;
+      },
+      pin() {
+        return `
+          <div class="card pinwrap">
+            <h2>Developer access</h2>
+            <p class="note">Internal build tools. Restricted.</p>
+            <div class="pin-display" id="pindisp">${"•".repeat(state.pin.length) || " "}</div>
+            <div class="pad">
+              ${[1,2,3,4,5,6,7,8,9,"⌫",0,"OK"].map(v =>
+                `<button onclick="pinKey('${v}')">${v}</button>`
+              ).join("")}
+            </div>
+            <div class="err" id="pinerr"></div>
+            <button class="ghost wide" onclick="state.tab='set'; render()">Back</button>
+          </div>`;
+      },
+      studio() {
+        return `
+          <div class="card">
+            <h2>Studio</h2>
+            <p class="warn">Private generator. Prompts stay on-device until you tap generate. Be specific in exclusions if you do not want certain content.</p>
+            <label>Prompt</label>
+            <textarea id="prompt" placeholder="subject, style, shot, details…"></textarea>
+            <label>Do not include</label>
+            <textarea id="neg" placeholder="things you do not want…"></textarea>
+            <div class="row">
+              <div>
+                <label>Count (1–30)</label>
+                <input id="count" type="number" min="1" max="30" value="4" />
+              </div>
+              <div>
+                <label>Type</label>
+                <select id="kind">
+                  <option value="images">Images only</option>
+                  <option value="gifs">GIFs only</option>
+                  <option value="videos">Videos only</option>
+                  <option value="stillmix">Images + GIFs</option>
+                </select>
+              </div>
+            </div>
+            <button class="wide" onclick="runGen()">Generate</button>
+            <div class="status" id="genstat"></div>
+          </div>
+          <div id="results"></div>
+          <button class="ghost wide" onclick="state.tab='set'; render()">Leave studio</button>`;
+      }
+    };
+
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function navHtml() {
+      const tabs = state.unlocked
+        ? [["log","Log"],["calc","Calc"],["studio","Studio"],["set","Settings"]]
+        : [["log","Log"],["calc","Calc"],["set","Settings"]];
+      return tabs.map(([id,label]) =>
+        `<button class="${state.tab===id|| (state.tab==='pin'&&id==='set')?'on':''}" onclick="go('${id}')">${label}</button>`
+      ).join("");
+    }
+
+    function go(id) {
+      state.tab = id;
+      render();
+    }
+
+    function render() {
+      const map = { log: pages.log, calc: pages.calc, set: pages.set, pin: pages.pin, studio: pages.studio };
+      const fn = map[state.tab] || pages.log;
+      document.getElementById("main").innerHTML = fn();
+      document.getElementById("nav").innerHTML = navHtml();
+      document.getElementById("title").textContent = state.tab === "studio" ? "Studio" : "Orbit Ledger";
+      document.getElementById("subtitle").textContent = state.tab === "studio" ? "private" : "pad notes";
+    }
+
+    function addNote() {
+      const el = document.getElementById("newnote");
+      const v = (el.value || "").trim();
+      if (!v) return;
+      state.notes.unshift(v);
+      localStorage.setItem(KEY + "_notes", JSON.stringify(state.notes));
+      render();
+    }
+    function delNote(i) {
+      state.notes.splice(i,1);
+      localStorage.setItem(KEY + "_notes", JSON.stringify(state.notes));
+      render();
+    }
+    function doDv() {
+      const m = parseFloat(document.getElementById("mass").value);
+      const isp = parseFloat(document.getElementById("isp").value);
+      const fuel = parseFloat(document.getElementById("fuel").value);
+      state.mass = document.getElementById("mass").value;
+      state.isp = document.getElementById("isp").value;
+      localStorage.setItem(KEY+"_mass", state.mass);
+      localStorage.setItem(KEY+"_isp", state.isp);
+      if (!(m>0 && isp>0 && fuel>0 && fuel<m)) {
+        document.getElementById("dvout").textContent = "Need wet mass, fuel mass < wet mass, and Isp.";
+        return;
+      }
+      const dv = Math.round(isp * 9.80665 * Math.log(m / (m - fuel)));
+      state.dv = String(dv);
+      localStorage.setItem(KEY+"_dv", state.dv);
+      document.getElementById("dvout").textContent = "≈ " + dv + " m/s";
+    }
+    function openDev() { state.pin = ""; state.tab = "pin"; render(); }
+    function pinKey(k) {
+      const err = document.getElementById("pinerr");
+      if (k === "⌫") state.pin = state.pin.slice(0,-1);
+      else if (k === "OK") {
+        if (state.pin === PIN) {
+          state.unlocked = true;
+          sessionStorage.setItem("ol_ok","1");
+          state.tab = "studio";
+          render();
+          return;
+        }
+        err.textContent = "Denied.";
+        state.pin = "";
+      } else if (state.pin.length < 8) state.pin += k;
+      document.getElementById("pindisp").textContent = "•".repeat(state.pin.length) || " ";
+    }
+
+    function buildPrompt(raw, neg, kind) {
+      let p = raw.trim();
+      const extras = [];
+      if (kind === "gifs") extras.push("animated looping gif, motion frames, dynamic pose");
+      if (kind === "videos") extras.push("cinematic motion still suitable as video keyframe");
+      if (neg && neg.trim()) extras.push("avoid: " + neg.trim());
+      extras.push("high detail");
+      return [p, ...extras].filter(Boolean).join(", ");
+    }
+
+    async function runGen() {
+      const prompt = (document.getElementById("prompt").value || "").trim();
+      const neg = document.getElementById("neg").value || "";
+      let count = parseInt(document.getElementById("count").value, 10);
+      const kind = document.getElementById("kind").value;
+      const stat = document.getElementById("genstat");
+      const box = document.getElementById("results");
+      if (!prompt) { stat.textContent = "Need a prompt."; return; }
+      if (!(count >= 1 && count <= 30)) count = 4;
+      const full = buildPrompt(prompt, neg, kind);
+      stat.textContent = "Requesting " + count + "…";
+      box.innerHTML = "";
+
+      const types = [];
+      if (kind === "images") for (let i=0;i<count;i++) types.push("image");
+      else if (kind === "gifs") for (let i=0;i<count;i++) types.push("gif");
+      else if (kind === "videos") for (let i=0;i<count;i++) types.push("video");
+      else {
+        for (let i=0;i<count;i++) types.push(i % 2 ? "gif" : "image");
+      }
+
+      const grid = document.createElement("div");
+      grid.className = "grid" + (count === 1 ? " one" : "");
+      box.appendChild(grid);
+
+      types.forEach((t, i) => {
+        const seed = Date.now() % 1e9 + i * 97;
+        const q = encodeURIComponent(full + (t === "gif" ? ", animated gif" : ""));
+        if (t === "video") {
+          const url = "https://pollinations.ai/p/" + q + "?model=openai-video&width=768&height=1280&nologo=true&seed=" + seed;
+          const v = document.createElement("video");
+          v.controls = true; v.playsInline = true; v.muted = true; v.loop = true;
+          v.poster = "https://image.pollinations.ai/prompt/" + q + "?width=768&height=1024&nologo=true&seed=" + seed;
+          const s = document.createElement("source");
+          s.src = "https://video.pollinations.ai/prompt/" + q + "?nologo=true&seed=" + seed;
+          s.type = "video/mp4";
+          v.appendChild(s);
+          grid.appendChild(v);
+        } else {
+          const img = document.createElement("img");
+          img.alt = t;
+          img.loading = "lazy";
+          img.src = "https://image.pollinations.ai/prompt/" + q + "?width=768&height=1024&nologo=true&seed=" + seed + "&enhance=true";
+          img.onclick = () => window.open(img.src, "_blank");
+          grid.appendChild(img);
+        }
+      });
+      stat.textContent = count + " " + kind + " queued. Tap an image to open full size. Video hosts can be flaky; stills always load.";
+    }
+
+    render();
+  </script>
+</body>
+</html>
