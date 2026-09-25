@@ -49,6 +49,7 @@
       border-radius: 16px; padding: 14px; margin-bottom: 12px;
     }
     h2 { font-size: 15px; margin: 0 0 10px; font-weight: 650; }
+    h3 { font-size: 12px; margin: 12px 0 6px; color: var(--muted); font-weight: 650; text-transform: uppercase; letter-spacing: .4px; }
     label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
     input, textarea, select {
       width: 100%; background: #0d1426; color: var(--text);
@@ -76,9 +77,10 @@
     .note { font-size: 13px; line-height: 1.45; color: #c5cee3; }
     .chip {
       display: inline-block; font-size: 11px; padding: 4px 8px; border-radius: 999px;
-      background: #1b2744; color: var(--acc2); margin-right: 6px;
+      background: #1b2744; color: var(--acc2); margin: 0 6px 6px 0;
     }
-    .list item, .log-item {
+    .chip.x { color: var(--danger); }
+    .log-item {
       padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px;
     }
     .hidden { display: none !important; }
@@ -102,6 +104,16 @@
     .warn { color: #f5c16c; font-size: 12px; line-height: 1.4; }
     .err { color: var(--danger); font-size: 13px; }
     .install { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .sug {
+      display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px;
+    }
+    .sug button {
+      background: #1a2340; color: var(--text); border: 1px solid var(--line);
+      font-size: 11px; padding: 7px 9px; border-radius: 999px; font-weight: 600;
+    }
+    .sug button.on { background: #2a4d8a; border-color: var(--acc); }
+    .sug button.ban { background: #3a1c24; border-color: #6a3038; }
+    .picked { min-height: 28px; margin-bottom: 8px; }
   </style>
 </head>
 <body>
@@ -123,14 +135,32 @@
   <script>
     const PIN = "91539";
     const KEY = "ol_v1";
+    const CATS = [
+      { id: "series", name: "Series", tags: ["pokemon","naruto","genshin_impact","one_piece","my_hero_academia","honkai:_star_rail","overwatch","league_of_legends","sonic_the_hedgehog","minecraft"] },
+      { id: "character", name: "Character", tags: ["hatsune_miku","2b_(nier:automata)","samus_aran","princess_peach","mario","sonic_the_hedgehog","gwen_stacy","harley_quinn","mercy_(overwatch)","tracer"] },
+      { id: "artist", name: "Artist", tags: ["shadman","incognitymous","neocoill","personalami","cutesexyrobutts","crimson_(artist)","sanuki_(kyoudaisuki)","kurohime","bokuman","ewgeng"] },
+      { id: "body", name: "Body", tags: ["big_breasts","huge_breasts","thick_thighs","wide_hips","ass","muscular_female","flat_chest","abs","curvy","small_breasts"] },
+      { id: "clothes", name: "Clothes", tags: ["nude","swimsuit","school_uniform","lingerie","stockings","shirt","pants","armor","bodysuit","open_clothes"] },
+      { id: "act", name: "Act", tags: ["sex","oral","missionary","from_behind","cowgirl_position","standing","kissing","holding_hands","looking_at_viewer","smile"] },
+      { id: "count", name: "Count", tags: ["solo","solo_female","duo","group","1girl","1boy","2girls","1girl_1boy","female_only","male_only"] },
+      { id: "media", name: "Media", tags: ["animated","video","gif","highres","absurdres","4k","sound","loop","webm","long_video"] },
+      { id: "species", name: "Species", tags: ["human","anthro","furry","pokemon_(species)","demon","elf","robot","android","monster_girl","alien"] },
+      { id: "extra", name: "Extra", tags: ["female","male","blush","sweat","tongue","ahegao","detailed_background","indoors","outdoors","night"] }
+    ];
+    const FILTER_TOP = ["ai_generated","young","loli","shota","scat","gore","bestiality","pregnant","rape","ugly_man"];
+
     const state = {
       tab: "log",
       unlocked: sessionStorage.getItem("ol_ok") === "1",
       pin: "",
-      notes: JSON.parse(localStorage.getItem(KEY + "_notes") || '["Check RCS before circularization.","Keep first stage TWR ~1.4.","Do not forget batteries on the lander."]' ),
+      notes: JSON.parse(localStorage.getItem(KEY + "_notes") || '["Check RCS before circularization.","Keep first stage TWR ~1.4.","Do not forget batteries on the lander."]'),
       dv: localStorage.getItem(KEY + "_dv") || "",
       mass: localStorage.getItem(KEY + "_mass") || "",
-      isp: localStorage.getItem(KEY + "_isp") || "320"
+      isp: localStorage.getItem(KEY + "_isp") || "320",
+      want: JSON.parse(localStorage.getItem(KEY + "_want") || "[]"),
+      ban: JSON.parse(localStorage.getItem(KEY + "_ban") || "[]"),
+      queries: {},
+      suggestions: {}
     };
 
     if ("serviceWorker" in navigator) {
@@ -184,7 +214,7 @@
           </div>
           <div class="card">
             <h2>About</h2>
-            <p class="note">Orbit Ledger 1.2 — local launch notes. No account.</p>
+            <p class="note">Orbit Ledger 1.3 — local launch notes. No account.</p>
             <button class="ghost wide" onclick="openDev()">Developer tools</button>
           </div>`;
       },
@@ -207,15 +237,23 @@
         return `
           <div class="card">
             <h2>Studio</h2>
-            <p class="warn">Private generator. Prompts stay on-device until you tap generate. Be specific in exclusions if you do not want certain content.</p>
-            <label>Prompt</label>
-            <textarea id="prompt" placeholder="subject, style, shot, details…"></textarea>
-            <label>Do not include</label>
-            <textarea id="neg" placeholder="things you do not want…"></textarea>
+            <p class="note">Pulls posts from Rule34 by real tags. Empty box = top 10 in that group. Type to narrow; list stays at 10 until the tag is specific enough to pick.</p>
+            <div class="picked" id="wantchips">${chips(state.want, false)}</div>
+            ${CATS.map(c => catBlock(c, "want")).join("")}
+          </div>
+          <div class="card">
+            <h2>Personal filter</h2>
+            <p class="note">Tags to exclude. Same picker: top 10, type to get more specific.</p>
+            <div class="picked" id="banchips">${chips(state.ban, true)}</div>
+            <label>Filter search</label>
+            <input id="q-ban" placeholder="type a tag…" oninput="typeCat('ban', this.value)" />
+            <div class="sug" id="sug-ban">${sugButtons(visibleTags("ban"), "ban")}</div>
+          </div>
+          <div class="card">
             <div class="row">
               <div>
                 <label>Count (1–30)</label>
-                <input id="count" type="number" min="1" max="30" value="4" />
+                <input id="count" type="number" min="1" max="30" value="10" />
               </div>
               <div>
                 <label>Type</label>
@@ -227,13 +265,128 @@
                 </select>
               </div>
             </div>
-            <button class="wide" onclick="runGen()">Generate</button>
+            <button class="wide" onclick="runSearch()">Search</button>
             <div class="status" id="genstat"></div>
           </div>
           <div id="results"></div>
           <button class="ghost wide" onclick="state.tab='set'; render()">Leave studio</button>`;
       }
     };
+
+    function catBlock(c, mode) {
+      const q = state.queries[c.id] || "";
+      return `
+        <h3>${esc(c.name)}</h3>
+        <input id="q-${c.id}" placeholder="type to specify…" value="${esc(q)}" oninput="typeCat('${c.id}', this.value)" />
+        <div class="sug" id="sug-${c.id}">${sugButtons(visibleTags(c.id), "want")}</div>`;
+    }
+
+    function chips(list, ban) {
+      if (!list.length) return `<span class="note">${ban ? "No filters." : "No tags yet."}</span>`;
+      return list.map(t => `<span class="chip ${ban?"x":""}" onclick="dropTag('${esc(t)}', ${ban})">${esc(t)} ×</span>`).join("");
+    }
+
+    function sugButtons(tags, mode) {
+      const selected = mode === "ban" ? state.ban : state.want;
+      return tags.map(t => {
+        const on = selected.includes(t);
+        return `<button class="${on ? (mode==="ban"?"ban":"on") : ""}" onclick="toggleTag('${t.replace(/'/g,"\\'")}', '${mode}')">${esc(t)}</button>`;
+      }).join("") || `<span class="note">No matches.</span>`;
+    }
+
+    function visibleTags(id) {
+      if (id === "ban") {
+        const q = (state.queries.ban || "").trim().toLowerCase().replace(/ /g, "_");
+        const live = state.suggestions.ban;
+        if (q && live && live.length) return live.slice(0, 10);
+        if (!q) return FILTER_TOP;
+        return FILTER_TOP.filter(t => t.includes(q)).slice(0, 10);
+      }
+      const cat = CATS.find(c => c.id === id);
+      const q = (state.queries[id] || "").trim().toLowerCase().replace(/ /g, "_");
+      const live = state.suggestions[id];
+      if (q && live && live.length) return live.slice(0, 10);
+      if (!q) return cat.tags.slice(0, 10);
+      const local = cat.tags.filter(t => t.includes(q));
+      return local.slice(0, 10);
+    }
+
+    let acTimer = {};
+    function typeCat(id, val) {
+      state.queries[id] = val;
+      const box = document.getElementById("sug-" + id);
+      if (box) box.innerHTML = sugButtons(visibleTags(id), id === "ban" ? "ban" : "want");
+      clearTimeout(acTimer[id]);
+      const q = val.trim();
+      if (q.length < 2) {
+        state.suggestions[id] = null;
+        if (box) box.innerHTML = sugButtons(visibleTags(id), id === "ban" ? "ban" : "want");
+        return;
+      }
+      acTimer[id] = setTimeout(() => fetchAuto(id, q), 220);
+    }
+
+    async function fetchAuto(id, q) {
+      const tags = await autoTags(q);
+      state.suggestions[id] = tags;
+      const box = document.getElementById("sug-" + id);
+      if (box) box.innerHTML = sugButtons(visibleTags(id), id === "ban" ? "ban" : "want");
+    }
+
+    async function autoTags(q) {
+      const clean = q.trim().toLowerCase().replace(/\s+/g, "_");
+      const url = "https://api.rule34.xxx/autocomplete.php?q=" + encodeURIComponent(clean);
+      const data = await getJSON(url);
+      if (!Array.isArray(data)) return [];
+      return data.map(item => {
+        if (typeof item === "string") return item;
+        return item.value || item.name || (item.label || "").replace(/\s*\(\d+\)\s*$/, "");
+      }).filter(Boolean).slice(0, 10);
+    }
+
+    async function getJSON(url) {
+      try {
+        const r = await fetch(url);
+        if (r.ok) return await r.json();
+      } catch (e) {}
+      try {
+        const r = await fetch("https://corsproxy.io/?" + encodeURIComponent(url));
+        if (r.ok) return await r.json();
+      } catch (e) {}
+      try {
+        const r = await fetch("https://api.allorigins.win/raw?url=" + encodeURIComponent(url));
+        if (r.ok) return await r.json();
+      } catch (e) {}
+      return [];
+    }
+
+    function toggleTag(tag, mode) {
+      tag = String(tag).trim().replace(/\s+/g, "_");
+      if (!tag) return;
+      const list = mode === "ban" ? state.ban : state.want;
+      const i = list.indexOf(tag);
+      if (i >= 0) list.splice(i, 1);
+      else list.push(tag);
+      localStorage.setItem(KEY + (mode === "ban" ? "_ban" : "_want"), JSON.stringify(list));
+      refreshChips();
+      CATS.forEach(c => {
+        const box = document.getElementById("sug-" + c.id);
+        if (box) box.innerHTML = sugButtons(visibleTags(c.id), "want");
+      });
+      const banBox = document.getElementById("sug-ban");
+      if (banBox) banBox.innerHTML = sugButtons(visibleTags("ban"), "ban");
+    }
+
+    function dropTag(tag, ban) {
+      toggleTag(tag, ban ? "ban" : "want");
+    }
+
+    function refreshChips() {
+      const w = document.getElementById("wantchips");
+      const b = document.getElementById("banchips");
+      if (w) w.innerHTML = chips(state.want, false);
+      if (b) b.innerHTML = chips(state.ban, true);
+    }
 
     function esc(s) {
       return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -248,10 +401,7 @@
       ).join("");
     }
 
-    function go(id) {
-      state.tab = id;
-      render();
-    }
+    function go(id) { state.tab = id; render(); }
 
     function render() {
       const map = { log: pages.log, calc: pages.calc, set: pages.set, pin: pages.pin, studio: pages.studio };
@@ -310,64 +460,74 @@
       document.getElementById("pindisp").textContent = "•".repeat(state.pin.length) || " ";
     }
 
-    function buildPrompt(raw, neg, kind) {
-      let p = raw.trim();
-      const extras = [];
-      if (kind === "gifs") extras.push("animated looping gif, motion frames, dynamic pose");
-      if (kind === "videos") extras.push("cinematic motion still suitable as video keyframe");
-      if (neg && neg.trim()) extras.push("avoid: " + neg.trim());
-      extras.push("high detail");
-      return [p, ...extras].filter(Boolean).join(", ");
+    function extOf(url) {
+      const p = (url || "").split("?")[0].toLowerCase();
+      if (p.endsWith(".gif")) return "gif";
+      if (p.endsWith(".mp4") || p.endsWith(".webm")) return "video";
+      return "image";
     }
 
-    async function runGen() {
-      const prompt = (document.getElementById("prompt").value || "").trim();
-      const neg = document.getElementById("neg").value || "";
+    function matchesKind(kind, type) {
+      if (kind === "images") return type === "image";
+      if (kind === "gifs") return type === "gif";
+      if (kind === "videos") return type === "video";
+      if (kind === "stillmix") return type === "image" || type === "gif";
+      return true;
+    }
+
+    async function runSearch() {
       let count = parseInt(document.getElementById("count").value, 10);
       const kind = document.getElementById("kind").value;
       const stat = document.getElementById("genstat");
       const box = document.getElementById("results");
-      if (!prompt) { stat.textContent = "Need a prompt."; return; }
-      if (!(count >= 1 && count <= 30)) count = 4;
-      const full = buildPrompt(prompt, neg, kind);
-      stat.textContent = "Requesting " + count + "…";
-      box.innerHTML = "";
-
-      const types = [];
-      if (kind === "images") for (let i=0;i<count;i++) types.push("image");
-      else if (kind === "gifs") for (let i=0;i<count;i++) types.push("gif");
-      else if (kind === "videos") for (let i=0;i<count;i++) types.push("video");
-      else {
-        for (let i=0;i<count;i++) types.push(i % 2 ? "gif" : "image");
+      if (!(count >= 1 && count <= 30)) count = 10;
+      if (!state.want.length && !state.ban.length) {
+        stat.textContent = "Pick at least one tag or filter.";
+        return;
       }
-
+      const parts = [...state.want, ...state.ban.map(t => "-" + t), "sort:score:desc"];
+      if (kind === "gifs") parts.push("gif");
+      if (kind === "videos") parts.push("video");
+      if (kind === "stillmix") parts.push("-video");
+      const tags = parts.join(" ");
+      stat.textContent = "Searching…";
+      box.innerHTML = "";
+      const url = "https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&json=1&limit=100&tags=" + encodeURIComponent(tags);
+      let posts = await getJSON(url);
+      if (!Array.isArray(posts)) posts = [];
+      const filtered = posts.filter(p => {
+        const file = p.file_url || p.sample_url || "";
+        return matchesKind(kind, extOf(file));
+      }).slice(0, count);
+      if (!filtered.length) {
+        stat.textContent = "No posts for those tags. Loosen filters or check spelling (underscores).";
+        return;
+      }
       const grid = document.createElement("div");
-      grid.className = "grid" + (count === 1 ? " one" : "");
-      box.appendChild(grid);
-
-      types.forEach((t, i) => {
-        const seed = Date.now() % 1e9 + i * 97;
-        const q = encodeURIComponent(full + (t === "gif" ? ", animated gif" : ""));
-        if (t === "video") {
-          const url = "https://pollinations.ai/p/" + q + "?model=openai-video&width=768&height=1280&nologo=true&seed=" + seed;
+      grid.className = "grid" + (filtered.length === 1 ? " one" : "");
+      filtered.forEach(p => {
+        const file = p.file_url || p.sample_url;
+        const type = extOf(file);
+        if (type === "video") {
           const v = document.createElement("video");
-          v.controls = true; v.playsInline = true; v.muted = true; v.loop = true;
-          v.poster = "https://image.pollinations.ai/prompt/" + q + "?width=768&height=1024&nologo=true&seed=" + seed;
+          v.controls = true; v.playsInline = true; v.loop = true; v.muted = true;
+          if (p.sample_url && extOf(p.sample_url) === "image") v.poster = p.sample_url;
+          else if (p.preview_url) v.poster = p.preview_url;
           const s = document.createElement("source");
-          s.src = "https://video.pollinations.ai/prompt/" + q + "?nologo=true&seed=" + seed;
-          s.type = "video/mp4";
+          s.src = file;
           v.appendChild(s);
           grid.appendChild(v);
         } else {
           const img = document.createElement("img");
-          img.alt = t;
           img.loading = "lazy";
-          img.src = "https://image.pollinations.ai/prompt/" + q + "?width=768&height=1024&nologo=true&seed=" + seed + "&enhance=true";
-          img.onclick = () => window.open(img.src, "_blank");
+          img.src = p.sample_url || file;
+          img.alt = (p.tags || "").slice(0, 80);
+          img.onclick = () => window.open(file, "_blank");
           grid.appendChild(img);
         }
       });
-      stat.textContent = count + " " + kind + " queued. Tap an image to open full size. Video hosts can be flaky; stills always load.";
+      box.appendChild(grid);
+      stat.textContent = filtered.length + " posts. Tap a still for full file.";
     }
 
     render();
